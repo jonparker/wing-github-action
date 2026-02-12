@@ -16,6 +16,17 @@ exports.Platform = class WingGithubActionsBackendS3 {
         key: process.env.TF_BACKEND_STATE_FILE
       }
     }
+
+    // Override Lambda runtime: nodejs18.x → nodejs20.x
+    if (config.resource && config.resource.aws_lambda_function) {
+      for (const [name, func] of Object.entries(config.resource.aws_lambda_function)) {
+        if (func.runtime === "nodejs18.x") {
+          func.runtime = "nodejs20.x";
+          console.log(`  Overrode runtime to nodejs20.x for Lambda: ${name}`);
+        }
+      }
+    }
+
     return config;
   }
 }
