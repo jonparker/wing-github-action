@@ -21,8 +21,8 @@ exports.Platform = class WingGithubActionsBackendS3 {
     if (config.resource && config.resource.aws_lambda_function) {
       for (const [name, func] of Object.entries(config.resource.aws_lambda_function)) {
         if (func.runtime === "nodejs18.x") {
-          func.runtime = "nodejs20.x";
-          console.log(`  Overrode runtime to nodejs20.x for Lambda: ${name}`);
+          func.runtime = "nodejs22.x";
+          console.log(`  Overrode runtime to nodejs22.x for Lambda: ${name}`);
         }
       }
     }

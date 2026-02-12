@@ -1,4 +1,4 @@
-FROM node:20-slim
+FROM node:22-slim
 LABEL org.opencontainers.image.source=https://github.com/jonparker/wing-github-action
 LABEL org.opencontainers.image.description="Deploy Wing Apps with Github Actions"
 LABEL org.opencontainers.image.licenses=MIT
