@@ -7,7 +7,7 @@ RUN apt-get update -y && apt-get install -y unzip curl
 
 ENV TF_PLUGIN_CACHE_DIR="/root/.terraform.d/plugin-cache"
 # Upgraded to 1.7.7 (BUSL 1.1) for nodejs22.x Lambda runtime support
-ENV TERRAFORM_VERSION="1.7.7"
+ENV TERRAFORM_VERSION="1.7.5"
 RUN mkdir -p ${TF_PLUGIN_CACHE_DIR}
 
 # Install Terraform
