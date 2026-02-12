@@ -27,6 +27,15 @@ exports.Platform = class WingGithubActionsBackendS3 {
       }
     }
 
+    // Override AWS provider version to support nodejs22.x runtime
+    if (!config.terraform.required_providers) {
+      config.terraform.required_providers = {};
+    }
+    config.terraform.required_providers.aws = {
+      source: "hashicorp/aws",
+      version: "~> 5.70"
+    };
+
     return config;
   }
 }
