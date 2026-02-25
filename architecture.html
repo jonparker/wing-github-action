@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>wing-github-action Architecture</title>
+  <style>
+    :root {
+      --bg:            #0f1117;
+      --surface:       #1a1d27;
+      --border:        #2e3348;
+      --text-primary:  #e8eaf0;
+      --text-muted:    #7b82a0;
+      --spine:         #4a90e2;
+      --hook-bg:       #2d2010;
+      --hook-border:   #e0883a;
+      --hook-text:     #f0b060;
+      --pr-bg:         #0e1829;
+      --pr-border:     #4a90e2;
+      --deploy-bg:     #0b1a10;
+      --deploy-border: #3dba6f;
+      --arrow:         #5a6280;
+      --diamond-bg:    #252a3a;
+      --diamond-border:#7b82a0;
+      --mono:          'Menlo', 'Cascadia Code', 'Consolas', monospace;
+      --ui:            -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text-primary);
+      font-family: var(--ui);
+      min-height: 100vh;
+      padding: 24px 16px 48px;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+    header h1 {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+      color: var(--text-primary);
+    }
+    header p {
+      margin-top: 6px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .diagram-wrapper {
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    svg {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    /* Legend */
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      justify-content: center;
+      margin: 20px auto 0;
+      max-width: 700px;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    .legend-swatch {
+      width: 14px;
+      height: 14px;
+      border-radius: 3px;
+      border: 2px solid;
+      flex-shrink: 0;
+    }
+
+    /* Branch table */
+    .branch-section {
+      max-width: 800px;
+      margin: 36px auto 0;
+    }
+    .branch-section h2 {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 12px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    th {
+      background: var(--surface);
+      color: var(--text-muted);
+      font-weight: 600;
+      text-align: left;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    td {
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text-primary);
+      font-family: var(--mono);
+      font-size: 12px;
+    }
+    tr.highlight-row td {
+      background: rgba(224, 136, 58, 0.08);
+      border-left: 3px solid var(--hook-border);
+    }
+    tr.highlight-row td:not(:first-child) {
+      border-left: none;
+    }
+    tr:last-child td { border-bottom: none; }
+
+    /* Tooltip */
+    #tooltip {
+      position: fixed;
+      display: none;
+      background: #252a3a;
+      border: 1px solid #4a90e2;
+      border-radius: 6px;
+      padding: 10px 13px;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text-primary);
+      max-width: 360px;
+      white-space: pre-wrap;
+      line-height: 1.5;
+      pointer-events: none;
+      z-index: 9999;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    }
+
+    /* Hover glow on SVG nodes */
+    .node { cursor: pointer; }
+    .node:hover .node-rect { filter: brightness(1.25); }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>wing-github-action — Architecture Overview</h1>
+  <p>How Wing synth, the postSynth hook, and Terraform plan/apply relate in the PR and Deploy flows</p>
+</header>
+
+<div class="diagram-wrapper">
+  <svg viewBox="0 0 1100 1080" xmlns="http://www.w3.org/2000/svg" aria-label="wing-github-action architecture diagram">
+    <defs>
+      <!-- Arrow markers -->
+      <marker id="arr-default" orient="auto" markerWidth="10" markerHeight="10" refX="8" refY="3.5">
+        <path d="M0,0 L0,7 L10,3.5 z" fill="#5a6280"/>
+      </marker>
+      <marker id="arr-blue" orient="auto" markerWidth="10" markerHeight="10" refX="8" refY="3.5">
+        <path d="M0,0 L0,7 L10,3.5 z" fill="#4a90e2"/>
+      </marker>
+      <marker id="arr-green" orient="auto" markerWidth="10" markerHeight="10" refX="8" refY="3.5">
+        <path d="M0,0 L0,7 L10,3.5 z" fill="#3dba6f"/>
+      </marker>
+      <marker id="arr-amber" orient="auto" markerWidth="10" markerHeight="10" refX="8" refY="3.5">
+        <path d="M0,0 L0,7 L10,3.5 z" fill="#e0883a"/>
+      </marker>
+
+      <!-- Glow filter for postSynth box -->
+      <filter id="amber-glow" x="-20%" y="-20%" width="140%" height="140%">
+        <feDropShadow dx="0" dy="0" stdDeviation="6" flood-color="#e0883a" flood-opacity="0.4"/>
+      </filter>
+      <filter id="blue-glow" x="-20%" y="-20%" width="140%" height="140%">
+        <feDropShadow dx="0" dy="0" stdDeviation="5" flood-color="#4a90e2" flood-opacity="0.3"/>
+      </filter>
+      <filter id="green-glow" x="-20%" y="-20%" width="140%" height="140%">
+        <feDropShadow dx="0" dy="0" stdDeviation="5" flood-color="#3dba6f" flood-opacity="0.3"/>
+      </filter>
+    </defs>
+
+    <!-- ===== BACKGROUND LANE WASHES ===== -->
+    <!-- PR lane -->
+    <rect x="30" y="640" width="480" height="400" rx="12"
+          fill="rgba(74,144,226,0.05)" stroke="rgba(74,144,226,0.15)" stroke-width="1" stroke-dasharray="6,4"/>
+    <!-- Deploy lane -->
+    <rect x="590" y="640" width="480" height="400" rx="12"
+          fill="rgba(61,186,111,0.05)" stroke="rgba(61,186,111,0.15)" stroke-width="1" stroke-dasharray="6,4"/>
+
+    <!-- Lane labels -->
+    <text x="270" y="628" text-anchor="middle" font-family="'Segoe UI',sans-serif" font-size="11"
+          font-weight="700" fill="#4a90e2" letter-spacing="0.12em">PR FLOW</text>
+    <text x="830" y="628" text-anchor="middle" font-family="'Segoe UI',sans-serif" font-size="11"
+          font-weight="700" fill="#3dba6f" letter-spacing="0.12em">DEPLOY FLOW</text>
+
+    <!-- ===== DOCKER CONTAINER BOUNDARY ===== -->
+    <rect x="310" y="135" width="480" height="380" rx="10"
+          fill="none" stroke="#2e3348" stroke-width="1.5" stroke-dasharray="8,4"/>
+    <text x="321" y="152" font-family="'Segoe UI',sans-serif" font-size="10"
+          fill="#7b82a0" letter-spacing="0.05em">DOCKER CONTAINER  ·  Node 22  ·  Terraform 1.7.5</text>
+
+    <!-- ===== SHARED STEPS — CENTER SPINE (x=550) ===== -->
+
+    <!-- 1. GitHub Trigger -->
+    <g class="node" data-tooltip="Triggered by GitHub Actions workflow&#10;on: pull_request  →  PR Diff action&#10;on: push          →  Deploy action">
+      <rect class="node-rect" x="410" y="28" width="280" height="64" rx="8"
+            fill="#1a1d27" stroke="#4a90e2" stroke-width="1.5" filter="url(#blue-glow)"/>
+      <!-- GitHub mark (simplified octocat path) -->
+      <text x="436" y="60" font-size="22" fill="#e8eaf0">⬡</text>
+      <text x="467" y="52" font-family="'Segoe UI',sans-serif" font-size="13"
+            font-weight="600" fill="#e8eaf0">GitHub Workflow</text>
+      <text x="467" y="68" font-family="'Segoe UI',sans-serif" font-size="11"
+            fill="#7b82a0">on: pull_request  /  push</text>
+    </g>
+
+    <!-- Arrow 1 → 2 -->
+    <line x1="550" y1="92" x2="550" y2="138" stroke="#5a6280" stroke-width="1.5" marker-end="url(#arr-default)"/>
+
+    <!-- 2. Install Dependencies (inside Docker) -->
+    <g class="node" data-tooltip="npm install -g winglang@{version}&#10;npm install -g @antfu/ni&#10;ni --frozen  (if package.json exists)">
+      <rect class="node-rect" x="410" y="160" width="280" height="64" rx="8"
+            fill="#1a1d27" stroke="#2e3348" stroke-width="1.5"/>
+      <text x="550" y="186" text-anchor="middle" font-family="'Segoe UI',sans-serif" font-size="13"
+            font-weight="600" fill="#e8eaf0">Install Dependencies</text>
+      <text x="550" y="203" text-anchor="middle" font-family="Menlo,monospace" font-size="10"
+            fill="#7b82a0">npm install -g winglang  ·  ni --frozen</text>
+    </g>
+
+    <!-- Arrow 2 → 3 -->
+    <line x1="550" y1="224" x2="550" y2="254" stroke="#5a6280" stroke-width="1.5" marker-end="url(#arr-default)"/>
+
+    <!-- 3. Wing Compile / SYNTH -->
+    <g class="node" data-tooltip="wing compile \&#10;  --platform tf-aws \&#10;  --platform /action/platforms/backend.s3.js \&#10;  main.w&#10;&#10;Output: target/main.tfaws/  (Terraform JSON)&#10;Env: TF_BACKEND_STATE_FILE={repo}/{ref}/terraform.tfstate">
+      <rect class="node-rect" x="390" y="256" width="320" height="80" rx="8"
+            fill="#1a1d27" stroke="#4a90e2" stroke-width="2"/>
+      <!-- SYNTH badge -->
+      <rect x="392" y="258" width="52" height="18" rx="4" fill="#4a90e2"/>
+      <text x="418" y="271" text-anchor="middle" font-family="'Segoe UI',sans-serif" font-size="9"
+            font-weight="700" fill="#fff" letter-spacing="0.06em">SYNTH</text>
+      <text x="550" y="293" text-anchor="middle" font-family="Menlo,monospace" font-size="12"
+            font-weight="600" fill="#e8eaf0">wing compile</text>
+      <text x="550" y="310" text-anchor="middle" font-family="Menlo,monospace" font-size="10"
+            fill="#7b82a0">--platform tf-aws</text>
+      <text x="550" y="326" text-anchor="middle" font-family="Menlo,monospace" font-size="10"
+            fill="#7b82a0">--platform backend.s3.js</text>
+    </g>
+
+    <!-- Synth output label -->
+    <text x="716" y="290" font-family="Menlo,monospace" font-size="10" fill="#7b82a0">→ Terraform JSON</text>
+    <text x="716" y="304" font-family="Menlo,monospace" font-size="10" fill="#7b82a0">  target/main.tfaws/</text>
+
+    <!-- Arrow 3 → 4 (postSynth) -->
+    <line x1="550" y1="336" x2="550" y2="366" stroke="#e0883a" stroke-width="1.5" marker-end="url(#arr-amber)"/>
+
+    <!-- 4. postSynth Hook (amber) -->
+    <g class="node" data-tooltip="postSynth hook runs AFTER wing compile,&#10;BEFORE Terraform sees the config:&#10;&#10;① config.terraform.backend = {&#10;     s3: { bucket, region, key }&#10;   }&#10;&#10;② func.runtime = &quot;nodejs22.x&quot;&#10;   (overrides nodejs18.x/20.x for&#10;    all aws_lambda_function resources)&#10;&#10;③ required_providers.aws = {&#10;     source: &quot;hashicorp/aws&quot;,&#10;     version: &quot;~> 5.70&quot;&#10;   }">
+      <rect class="node-rect" x="370" y="368" width="360" height="112" rx="8"
+            fill="#2d2010" stroke="#e0883a" stroke-width="2" filter="url(#amber-glow)"/>
+      <!-- Hook badge -->
+      <rect x="372" y="370" width="60" height="18" rx="4" fill="#e0883a"/>
+      <text x="402" y="383" text-anchor="middle" font-family="'Segoe UI',sans-serif" font-size="9"
+            font-weight="700" fill="#1a0e00" letter-spacing="0.06em">postSynth</text>
+      <text x="550" y="403" text-anchor="middle" font-family="'Segoe UI',sans-serif" font-size="12"
+            font-weight="700" fill="#f0b060">⚙ Platform Hook</text>
+      <!-- Three mutations -->
+      <text x="398" y="423" font-family="Menlo,monospace" font-size="10" fill="#d4956a">① Inject S3 backend config (bucket, region, key)</text>
+      <text x="398" y="440" font-family="Menlo,monospace" font-size="10" fill="#d4956a">② Override Lambda runtime → nodejs22.x</text>
+      <text x="398" y="457" font-family="Menlo,monospace" font-size="10" fill="#d4956a">③ Update AWS provider → ~> 5.70</text>
+      <!-- Source hint -->
+      <text x="550" y="474" text-anchor="middle" font-family="Menlo,monospace" font-size="9"
+            fill="#7b5a3a">platforms/backend.s3.js</text>
+    </g>
+
+    <!-- Arrow postSynth → terraform init -->
+    <line x1="550" y1="480" x2="550" y2="510" stroke="#5a6280" stroke-width="1.5" marker-end="url(#arr-default)"/>
+
+    <!-- 5. terraform init -->
+    <g class="node" data-tooltip="terraform init&#10;&#10;  - Downloads AWS provider (hashicorp/aws ~> 5.70)&#10;  - Initializes S3 backend&#10;  - Reads existing terraform.tfstate&#10;&#10;TF_IN_AUTOMATION=true (disables prompts)&#10;TF_PLUGIN_CACHE_DIR set for speed">
+      <rect class="node-rect" x="420" y="512" width="260" height="60" rx="8"
+            fill="#1a1d27" stroke="#2e3348" stroke-width="1.5"/>
+      <text x="550" y="537" text-anchor="middle" font-family="Menlo,monospace" font-size="13"
+            font-weight="600" fill="#e8eaf0">terraform init</text>
+      <text x="550" y="555" text-anchor="middle" font-family="'Segoe UI',sans-serif" font-size="10"
+            fill="#7b82a0">Downloads providers · Initializes S3 backend</text>
+    </g>
+
+    <!-- ===== DECISION DIAMOND ===== -->
+    <!-- Diamond center at (550, 622) -->
+    <polygon points="550,598 592,622 550,646 508,622"
+             fill="#252a3a" stroke="#7b82a0" stroke-width="1.5"/>
+    <text x="550" y="618" text-anchor="middle" font-family="'Segoe UI',sans-serif" font-size="9"
+          fill="#7b82a0">event</text>
+    <text x="550" y="632" text-anchor="middle" font-family="'Segoe UI',sans-serif" font-size="9"
+          fill="#7b82a0">type?</text>
+
+    <!-- Arrow terraform init → diamond -->
+    <line x1="550" y1="572" x2="550" y2="596" stroke="#5a6280" stroke-width="1.5" marker-end="url(#arr-default)"/>
+
+    <!-- Fork arrow → PR (left) -->
+    <polyline points="508,622 270,622 270,658" fill="none"
+              stroke="#4a90e2" stroke-width="1.5" marker-end="url(#arr-blue)"/>
+    <text x="380" y="614" text-anchor="middle" font-family="Menlo,monospace" font-size="10"
+          fill="#4a90e2">pull_request</text>
+
+    <!-- Fork arrow → Deploy (right) -->
+    <polyline points="592,622 830,622 830,658" fill="none"
+              stroke="#3dba6f" stroke-width="1.5" marker-end="url(#arr-green)"/>
+    <text x="718" y="614" text-anchor="middle" font-family="Menlo,monospace" font-size="10"
+          fill="#3dba6f">push</text>
+
+    <!-- ===== PR FLOW (left column, x=270) ===== -->
+
+    <!-- terraform plan -->
+    <g class="node" data-tooltip="terraform plan -input=false -no-color&#10;&#10;  - Reads existing state from S3 backend&#10;    using GITHUB_BASE_REF (base branch)&#10;  - Shows what would change (no apply)&#10;  - Output captured to string">
+      <rect class="node-rect" x="150" y="660" width="240" height="68" rx="8"
+            fill="#0e1829" stroke="#4a90e2" stroke-width="2" filter="url(#blue-glow)"/>
+      <text x="270" y="688" text-anchor="middle" font-family="Menlo,monospace" font-size="13"
+            font-weight="600" fill="#e8eaf0">terraform plan</text>
+      <text x="270" y="704" text-anchor="middle" font-family="Menlo,monospace" font-size="10"
+            fill="#7b82a0">-input=false -no-color</text>
+      <text x="270" y="720" text-anchor="middle" font-family="'Segoe UI',sans-serif" font-size="10"
+            fill="#4a6a9e">State ref: GITHUB_BASE_REF</text>
+    </g>
+
+    <!-- Arrow plan → comment -->
+    <line x1="270" y1="728" x2="270" y2="778" stroke="#4a90e2" stroke-width="1.5" marker-end="url(#arr-blue)"/>
+
+    <!-- Post PR Comment -->
+    <g class="node" data-tooltip="octokit.rest.issues.createComment({&#10;  ...github.context.repo,&#10;  issue_number: pull_request.number,&#10;  body: `#### Terraform Plan\n\`\`\`\n${output}\`\`\``&#10;})&#10;&#10;Output trimmed to 65,000 chars if too large">
+      <rect class="node-rect" x="130" y="780" width="280" height="76" rx="8"
+            fill="#0e1829" stroke="#4a90e2" stroke-width="1.5"/>
+      <!-- GitHub icon (circle with text) -->
+      <circle cx="156" cy="818" r="14" fill="#21262d" stroke="#4a90e2" stroke-width="1"/>
+      <text x="156" y="823" text-anchor="middle" font-size="14" fill="#e8eaf0">◉</text>
+      <text x="178" y="808" font-family="'Segoe UI',sans-serif" font-size="12"
+            font-weight="600" fill="#e8eaf0">Post PR Comment</text>
+      <text x="178" y="824" font-family="Menlo,monospace" font-size="10"
+            fill="#7b82a0">octokit.issues.createComment</text>
+      <text x="178" y="840" font-family="'Segoe UI',sans-serif" font-size="10"
+            fill="#4a6a9e">Shows plan diff on the pull request</text>
+    </g>
+
+    <!-- PR Comment output box -->
+    <g class="node">
+      <rect x="130" y="882" width="280" height="52" rx="8"
+            fill="#0a1020" stroke="#2e3348" stroke-width="1" stroke-dasharray="5,3"/>
+      <text x="270" y="904" text-anchor="middle" font-family="'Segoe UI',sans-serif" font-size="11"
+            fill="#7b82a0">#### Terraform Plan</text>
+      <text x="270" y="921" text-anchor="middle" font-family="Menlo,monospace" font-size="10"
+            fill="#5a6280">+ resource "aws_lambda_function" ...</text>
+    </g>
+    <line x1="270" y1="856" x2="270" y2="880" stroke="#4a90e2" stroke-width="1" stroke-dasharray="4,3"/>
+
+    <!-- ===== DEPLOY FLOW (right column, x=830) ===== -->
+
+    <!-- terraform apply -->
+    <g class="node" data-tooltip="terraform apply -input=false -auto-approve&#10;&#10;  - Reads existing state from S3 backend&#10;    using GITHUB_REF_NAME (current branch)&#10;  - Creates / updates / destroys AWS resources&#10;  - No interactive confirmation (auto-approve)&#10;  - Writes new state back to S3 when done">
+      <rect class="node-rect" x="710" y="660" width="240" height="68" rx="8"
+            fill="#0b1a10" stroke="#3dba6f" stroke-width="2" filter="url(#green-glow)"/>
+      <text x="830" y="688" text-anchor="middle" font-family="Menlo,monospace" font-size="13"
+            font-weight="600" fill="#e8eaf0">terraform apply</text>
+      <text x="830" y="704" text-anchor="middle" font-family="Menlo,monospace" font-size="10"
+            fill="#7b82a0">-input=false -auto-approve</text>
+      <text x="830" y="720" text-anchor="middle" font-family="'Segoe UI',sans-serif" font-size="10"
+            fill="#3a7a50">State ref: GITHUB_REF_NAME</text>
+    </g>
+
+    <!-- Arrow apply → AWS -->
+    <line x1="830" y1="728" x2="830" y2="778" stroke="#3dba6f" stroke-width="1.5" marker-end="url(#arr-green)"/>
+
+    <!-- AWS Infrastructure box -->
+    <g class="node" data-tooltip="AWS resources provisioned / updated:&#10;  - aws_lambda_function (runtime: nodejs22.x)&#10;  - aws_s3_bucket, aws_api_gateway, etc.&#10;  - Any resource Wing generates&#10;&#10;Uses AWS credentials from environment&#10;(recommended: GitHub OIDC + IAM role)">
+      <rect class="node-rect" x="700" y="780" width="260" height="68" rx="8"
+            fill="#0b1a10" stroke="#3dba6f" stroke-width="1.5"/>
+      <!-- AWS icon placeholder -->
+      <text x="726" y="823" font-size="22" fill="#FF9900">☁</text>
+      <text x="754" y="808" font-family="'Segoe UI',sans-serif" font-size="12"
+            font-weight="600" fill="#e8eaf0">AWS Infrastructure</text>
+      <text x="754" y="824" font-family="'Segoe UI',sans-serif" font-size="10"
+            fill="#7b82a0">Lambda · S3 · API Gateway · ...</text>
+      <text x="754" y="840" font-family="Menlo,monospace" font-size="10"
+            fill="#3a7a50">runtime: nodejs22.x</text>
+    </g>
+
+    <!-- Arrow AWS → S3 state -->
+    <line x1="830" y1="848" x2="830" y2="882" stroke="#3dba6f" stroke-width="1.5" marker-end="url(#arr-green)"/>
+    <text x="836" y="868" font-family="'Segoe UI',sans-serif" font-size="10"
+          fill="#7b82a0">saves state</text>
+
+    <!-- S3 State cylinder -->
+    <g class="node" data-tooltip="Terraform state file in S3:&#10;&#10;  Bucket: TF_BACKEND_BUCKET&#10;  Region: TF_BACKEND_BUCKET_REGION&#10;  Key:    {GITHUB_REPOSITORY}/&#10;           {GITHUB_REF_NAME}/&#10;           terraform.tfstate&#10;&#10;PR diff reads BASE branch state&#10;Deploy writes CURRENT branch state">
+      <!-- Cylinder: top ellipse, body, bottom ellipse -->
+      <ellipse cx="830" cy="896" rx="72" ry="14" fill="#0b1a10" stroke="#3dba6f" stroke-width="1.5"/>
+      <rect x="758" y="896" width="144" height="60" fill="#0b1a10" stroke="#3dba6f" stroke-width="1.5"
+            stroke-top="none"/>
+      <!-- cover the seam -->
+      <rect x="760" y="894" width="140" height="6" fill="#0b1a10"/>
+      <ellipse cx="830" cy="956" rx="72" ry="14" fill="#112516" stroke="#3dba6f" stroke-width="1.5"/>
+      <text x="830" y="926" text-anchor="middle" font-family="'Segoe UI',sans-serif" font-size="11"
+            font-weight="600" fill="#3dba6f">S3 Backend</text>
+      <text x="830" y="942" text-anchor="middle" font-family="Menlo,monospace" font-size="10"
+            fill="#7b82a0">terraform.tfstate</text>
+    </g>
+
+    <!-- ===== SHARED LABEL (top) ===== -->
+    <text x="550" y="18" text-anchor="middle" font-family="'Segoe UI',sans-serif" font-size="10"
+          fill="#7b82a0" letter-spacing="0.1em">SHARED STEPS (BOTH FLOWS)</text>
+
+  </svg>
+
+  <!-- Legend -->
+  <div class="legend">
+    <div class="legend-item">
+      <div class="legend-swatch" style="background:#0e1829;border-color:#4a90e2"></div>
+      PR / terraform plan flow
+    </div>
+    <div class="legend-item">
+      <div class="legend-swatch" style="background:#0b1a10;border-color:#3dba6f"></div>
+      Deploy / terraform apply flow
+    </div>
+    <div class="legend-item">
+      <div class="legend-swatch" style="background:#2d2010;border-color:#e0883a"></div>
+      postSynth hook (platform plugin)
+    </div>
+    <div class="legend-item">
+      <div class="legend-swatch" style="background:#1a1d27;border-color:#4a90e2"></div>
+      Shared steps
+    </div>
+    <div class="legend-item" style="font-style:italic">
+      💡 Hover over any step for details
+    </div>
+  </div>
+
+  <!-- Branch table -->
+  <div class="branch-section">
+    <h2>Branch Strategy</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Branch</th>
+          <th>Node.js</th>
+          <th>Lambda Runtime</th>
+          <th>Terraform</th>
+          <th>AWS Provider</th>
+          <th>Purpose</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>main</td>
+          <td>18</td>
+          <td>nodejs18.x</td>
+          <td>1.5.7 (MPL)</td>
+          <td>default</td>
+          <td style="font-family:var(--ui);color:var(--text-muted)">Upstream mirror (unmodified)</td>
+        </tr>
+        <tr>
+          <td>node20</td>
+          <td>20</td>
+          <td>nodejs20.x</td>
+          <td>1.5.7 (MPL)</td>
+          <td>5.56.1</td>
+          <td style="font-family:var(--ui);color:var(--text-muted)">Production — Node 20</td>
+        </tr>
+        <tr class="highlight-row">
+          <td>node22 ★</td>
+          <td>22</td>
+          <td>nodejs22.x</td>
+          <td>1.7.5 (BUSL)</td>
+          <td>~> 5.70</td>
+          <td style="font-family:var(--ui);color:var(--hook-text)">This diagram — Node 22 (postSynth override)</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Tooltip div -->
+<div id="tooltip"></div>
+
+<script>
+  const tooltip = document.getElementById('tooltip');
+  let activeNode = null;
+
+  document.querySelectorAll('[data-tooltip]').forEach(el => {
+    el.addEventListener('mouseenter', () => {
+      tooltip.textContent = el.getAttribute('data-tooltip');
+      tooltip.style.display = 'block';
+      activeNode = el;
+    });
+    el.addEventListener('mouseleave', () => {
+      tooltip.style.display = 'none';
+      activeNode = null;
+    });
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!activeNode) return;
+    const pad = 16;
+    let x = e.clientX + pad;
+    let y = e.clientY + pad;
+    const tw = tooltip.offsetWidth;
+    const th = tooltip.offsetHeight;
+    if (x + tw > window.innerWidth - pad) x = e.clientX - tw - pad;
+    if (y + th > window.innerHeight - pad) y = e.clientY - th - pad;
+    tooltip.style.left = x + 'px';
+    tooltip.style.top  = y + 'px';
+  });
+</script>
+</body>
+</html>
